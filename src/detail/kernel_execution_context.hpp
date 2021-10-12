@@ -25,17 +25,17 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef HIPCPU_KERNEL_CONTEXT
-#define HIPCPU_KERNEL_CONTEXT
+#ifndef CPUCUDA_KERNEL_CONTEXT
+#define CPUCUDA_KERNEL_CONTEXT
 
 #include "malloc.hpp"
 #include "types.hpp"
 
-#ifndef HIPCPU_NO_OPENMP
+#ifndef CPUCUDA_NO_OPENMP
 #include <omp.h>
 #endif
 
-namespace hipcpu {
+namespace cpucuda {
 namespace detail {
 
 class kernel_block_context
@@ -79,7 +79,7 @@ public:
 private:
   int get_linear_thread_id() const noexcept
   {
-#ifndef HIPCPU_NO_OPENMP
+#ifndef CPUCUDA_NO_OPENMP
     return omp_get_thread_num();
 #else
     return 0;

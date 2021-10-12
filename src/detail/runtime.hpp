@@ -25,8 +25,8 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef HIPCPU_RUNTIME_HPP
-#define HIPCPU_RUNTIME_HPP
+#ifndef CPUCUDA_RUNTIME_HPP
+#define CPUCUDA_RUNTIME_HPP
 
 #include <thread>
 #include <limits>
@@ -39,7 +39,7 @@
 #include "kernel_execution_context.hpp"
 #include "event.hpp"
 
-namespace hipcpu {
+namespace cpucuda {
 namespace detail {
 
 
@@ -188,7 +188,7 @@ public:
   void submit_kernel(stream& execution_stream, 
                     dim3 grid, dim3 block, int shared_mem, Func f)
   {
-#ifdef HIPCPU_NO_OPENMP
+#ifdef CPUCUDA_NO_OPENMP
     if(block.x * block.y * block.z > 1)
       throw std::invalid_argument{"More than 1 thread per block requires compiling"
                                   " hipCPU with OpenMP support."};
@@ -199,7 +199,7 @@ public:
       _block_context = detail::kernel_block_context{block, shared_mem};
       _grid_context = detail::kernel_grid_context{grid};
 
-#ifndef HIPCPU_NO_OPENMP
+#ifndef CPUCUDA_NO_OPENMP
   #pragma omp parallel for num_threads(block.x*block.y*block.z) collapse(3)
 #endif
       for(size_t l_x = 0; l_x < block.x; ++l_x){
@@ -249,7 +249,7 @@ public:
 
   void barrier()
   {
-#ifndef HIPCPU_NO_OPENMP
+#ifndef CPUCUDA_NO_OPENMP
     #pragma omp barrier
 #endif
   }
@@ -266,7 +266,7 @@ public:
 
   int get_max_threads()
   {
-#ifndef HIPCPU_NO_OPENMP
+#ifndef CPUCUDA_NO_OPENMP
     return omp_get_max_threads();
 #else
     return 1;
@@ -275,7 +275,7 @@ public:
 
   int get_num_compute_units()
   {
-#ifndef HIPCPU_NO_OPENMP
+#ifndef CPUCUDA_NO_OPENMP
     return omp_get_num_procs();
 #else
     return 1;

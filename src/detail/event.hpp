@@ -25,13 +25,13 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef HIPCPU_EVENT_HPP
-#define HIPCPU_EVENT_HPP
+#ifndef CPUCUDA_EVENT_HPP
+#define CPUCUDA_EVENT_HPP
 
 #include <atomic>
 #include <chrono>
 
-namespace hipcpu {
+namespace cpucuda {
 
 class event
 {

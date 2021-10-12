@@ -25,14 +25,14 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef HIPCPU_MALLOC_HPP
-#define HIPCPU_MALLOC_HPP
+#ifndef CPUCUDA_MALLOC_HPP
+#define CPUCUDA_MALLOC_HPP
 
 #include <cstdlib>
 #include <cassert>
 #include <new>
 
-namespace hipcpu {
+namespace cpucuda {
 namespace detail {
 
 constexpr std::size_t default_alignment = sizeof(double) * 16;

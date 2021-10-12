@@ -25,8 +25,8 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef HIPCPU_QUEUE_HPP
-#define HIPCPU_QUEUE_HPP
+#ifndef CPUCUDA_QUEUE_HPP
+#define CPUCUDA_QUEUE_HPP
 
 #include <thread>
 #include <atomic>
@@ -37,7 +37,7 @@
 #include <cassert>
 
 
-namespace hipcpu {
+namespace cpucuda {
 namespace detail {
 /// A worker thread that processes a queue in the background.
 class async_queue
