@@ -167,7 +167,11 @@ void async_queue::work()
       if(!_enqueued_operations.empty())
       {
         operation = _enqueued_operations.front();
-        _enqueued_operations.pop();
+      } else {
+        /* TODO this actually happens and does std::__throw_bad_function_call at
+           operation(), why? It started happening after _enqueued_operations.pop()
+           was moved to the bottom locked block, should look into it */
+        continue;
       }
     }
 
@@ -176,9 +180,10 @@ void async_queue::work()
 
     {
       std::lock_guard<std::mutex> lock(_mutex);
+      _enqueued_operations.pop();
       _is_idle = _enqueued_operations.empty();
     }
- 
+
     _condition_wait.notify_one();
 
   }
