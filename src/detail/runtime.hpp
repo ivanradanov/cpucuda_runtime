@@ -73,7 +73,7 @@ public:
         _data[i] = std::move(obj);
         return i;
       }
-    
+
     _data.push_back(obj);
     assert(_data.size() > 0);
 
@@ -87,11 +87,11 @@ public:
     assert(this->is_valid(id));
     return _data[id].get();
   }
-  
+
   object_ptr get_shared(uintptr_t id) const
   {
     std::lock_guard<std::mutex> lock{_lock};
-    
+
     assert(this->is_valid(id));
 
     return _data[id];
@@ -295,7 +295,7 @@ public:
   {
     return _events.store(std::make_unique<event>());
   }
-  
+
   void destroy_event(uintptr_t event_id)
   {
     _events.destroy(event_id);
@@ -342,7 +342,7 @@ public:
   }
 
   template<class Func>
-  void submit_kernel(dim3 grid, dim3 block, 
+  void submit_kernel(dim3 grid, dim3 block,
                     int shared_mem, int stream, Func f)
   {
     auto s = this->_streams.get(stream);
