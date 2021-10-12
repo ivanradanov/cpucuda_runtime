@@ -39,12 +39,68 @@
 #include <memory>
 #include <cmath>
 #include <stdexcept>
+#include <cstdint>
 
 #include <cuda_runtime.h>
 
 #include "detail/runtime.hpp"
+#include "detail/malloc.hpp"
 
+using std::uintptr_t;
 
+#define _cpucuda_runtime (cpucuda::runtime::get())
+
+// TODO this would have to be thread local
+struct {
+	dim3 gridDim, blockDim;
+	size_t sharedMem;
+	void *stream;
+	bool used;
+} __cpucudaCallConfiguration;
+
+/*extern "C"*/ unsigned __cudaPushCallConfiguration(dim3 gridDim, dim3 blockDim,
+                                                    size_t sharedMem,
+                                                    void *stream) {
+	//assert(__cpucudaCallConfiguration.used);
+	__cpucudaCallConfiguration.gridDim = gridDim;
+	__cpucudaCallConfiguration.blockDim = blockDim;
+	__cpucudaCallConfiguration.sharedMem = sharedMem;
+	__cpucudaCallConfiguration.stream = stream;
+	__cpucudaCallConfiguration.used = false;
+
+	return 0;
+}
+
+cudaError_t __cpucudaLaunchKernel(
+	const void* func,
+	dim3 grid_dim,
+	dim3 block_dim,
+	void** args,
+	size_t shared_mem,
+	cudaStream_t stream)
+{
+	_cpucuda_runtime.submit_kernel(func, grid_dim, block_dim, args, shared_mem, stream);
+	return cudaSuccess;
+}
+
+extern "C" cudaError_t __cpucudaLaunchKernelWithPushedConfiguration(
+	const void* func,
+	void** args)
+{
+	assert(__cpucudaCallConfiguration.used == false);
+	dim3 grid_dim = __cpucudaCallConfiguration.gridDim;
+	dim3 block_dim = __cpucudaCallConfiguration.blockDim;
+	size_t shared_mem = __cpucudaCallConfiguration.sharedMem;
+	cudaStream_t stream = (cudaStream_t) __cpucudaCallConfiguration.stream;
+	__cpucudaCallConfiguration.used = true;
+
+	return __cpucudaLaunchKernel(func, grid_dim, block_dim, args, shared_mem, stream);
+}
+
+cudaError_t cudaGetLastError(void)
+{
+	return cudaSuccess;
+}
 
 cudaError_t cudaMalloc(void** ptr, size_t size)
 {
@@ -72,14 +128,9 @@ cudaError_t cudaMallocHost(void** ptr, size_t size)
   return cudaMalloc(ptr, size);
 }
 
-#define cudaMemAttachGlobal 0
-#define cudaMemAttachHost 1
-
-template<class T>
-
-cudaError_t cudaMallocManaged(T** ptr, size_t size, unsigned flags = cudaMemAttachGlobal)
+cudaError_t cudaMallocManaged(void** ptr, size_t size, unsigned flags)
 {
-  return cudaMalloc(reinterpret_cast<void**>(ptr), size);
+  return cudaMalloc(ptr, size);
 }
 
 
@@ -133,7 +184,7 @@ cudaError_t cudaSetDevice(int device)
 
 cudaError_t cudaStreamCreate(cudaStream_t* stream)
 {
-  *stream = _cpucuda_runtime.create_blocking_stream();
+	*stream = reinterpret_cast<cudaStream_t>(_cpucuda_runtime.create_blocking_stream());
   return cudaSuccess;
 }
 
@@ -145,7 +196,7 @@ cudaError_t cudaStreamCreateWithFlags(cudaStream_t* stream, unsigned int flags)
     return cudaStreamCreate(stream);
   else if (flags == cudaStreamNonBlocking) 
   {
-    *stream = _cpucuda_runtime.create_async_stream();
+	  *stream = reinterpret_cast<cudaStream_t>(_cpucuda_runtime.create_async_stream());
     return cudaSuccess;
   }
 
@@ -155,14 +206,14 @@ cudaError_t cudaStreamCreateWithFlags(cudaStream_t* stream, unsigned int flags)
 
 cudaError_t cudaStreamSynchronize(cudaStream_t stream)
 {
-  _cpucuda_runtime.streams().get(stream)->wait();
+	_cpucuda_runtime.streams().get(reinterpret_cast<uintptr_t>(stream))->wait();
   return cudaSuccess;
 }
 
 
 cudaError_t cudaStreamDestroy(cudaStream_t stream)
 {
-  _cpucuda_runtime.destroy_stream(stream);
+	_cpucuda_runtime.destroy_stream(reinterpret_cast<uintptr_t>(stream));
   return cudaSuccess;
 }
 
@@ -171,18 +222,18 @@ cudaError_t cudaStreamDestroy(cudaStream_t stream)
 cudaError_t cudaStreamWaitEvent(cudaStream_t stream, cudaEvent_t event,
                                             unsigned int flags)
 {
-  std::shared_ptr<cpucuda::event> evt = _cpucuda_runtime.events().get_shared(event);
+  std::shared_ptr<cpucuda::event> evt = _cpucuda_runtime.events().get_shared(reinterpret_cast<uintptr_t>(event));
   _cpucuda_runtime.submit_operation([evt](){
     // TODO store error code
     evt->wait();
-  }, stream);
+  }, reinterpret_cast<uintptr_t>(stream));
   return cudaSuccess;
 }
 
 
 cudaError_t cudaStreamQuery(cudaStream_t stream)
 {
-  cpucuda::stream* s = _cpucuda_runtime.streams().get(stream);
+	cpucuda::stream* s = _cpucuda_runtime.streams().get(reinterpret_cast<uintptr_t>(stream));
   
   if(s->is_idle())
     return cudaSuccess;
@@ -199,25 +250,23 @@ cudaError_t cudaStreamAddCallback(cudaStream_t stream,
   _cpucuda_runtime.submit_operation([stream, callback, userData](){
     // TODO guarantee correct error propagation
     callback(stream, cudaSuccess, userData);
-  }, stream);
+  }, reinterpret_cast<uintptr_t>(stream));
   return cudaSuccess;
 }
 
 
 cudaError_t cudaMemcpyAsync(void* dst, const void* src, size_t sizeBytes,
-                          cudaMemcpyKind copyKind, cudaStream_t stream = 0)
+                            cudaMemcpyKind copyKind, cudaStream_t stream)
 {
-  if(!_cpucuda_runtime.streams().is_valid(stream))
+	if(!_cpucuda_runtime.streams().is_valid(reinterpret_cast<uintptr_t>(stream)))
     return cudaErrorInvalidValue;
 
   _cpucuda_runtime.submit_operation([=](){
     memcpy(dst, src, sizeBytes);
-  }, stream);
-  
+  }, reinterpret_cast<uintptr_t>(stream));
   return cudaSuccess;
 }
 
-                                            
 cudaError_t cudaMemcpy(void* dst, const void* src, size_t sizeBytes,
                                    cudaMemcpyKind copyKind)
 {
@@ -226,50 +275,10 @@ cudaError_t cudaMemcpy(void* dst, const void* src, size_t sizeBytes,
   return cudaSuccess;
 }
 
-
-cudaError_t cudaMemcpyHtoD(cudaDeviceptr_t dst, void* src, size_t size)
-{
-  return cudaMemcpy(dst, src, size, cudaMemcpyHostToDevice);
-}
-
-
-cudaError_t cudaMemcpyDtoH(void* dst, cudaDeviceptr_t src, size_t size)
-{
-  return cudaMemcpy(dst, src, size, cudaMemcpyDeviceToHost);
-}
-
-
-cudaError_t cudaMemcpyDtoD(cudaDeviceptr_t dst, cudaDeviceptr_t src, size_t size)
-{
-  return cudaMemcpy(dst, src, size, cudaMemcpyDeviceToDevice);
-}
-
-
-cudaError_t cudaMemcpyHtoDAsync(cudaDeviceptr_t dst, void* src, size_t size,
-                                            cudaStream_t stream)
-{
-  return cudaMemcpyAsync(dst, src, size, cudaMemcpyHostToDevice, stream);
-}
-
-
-cudaError_t cudaMemcpyDtoHAsync(void* dst, cudaDeviceptr_t src, size_t size,
-                                            cudaStream_t stream)
-{
-  return cudaMemcpyAsync(dst, src, size, cudaMemcpyDeviceToHost, stream);
-}
-
-
-cudaError_t cudaMemcpyDtoDAsync(cudaDeviceptr_t dst, cudaDeviceptr_t src, size_t size,
-                                            cudaStream_t stream)
-{
-  return cudaMemcpyAsync(dst, src, size, cudaMemcpyDeviceToDevice, stream);
-}
-
-
 cudaError_t cudaMemcpyToSymbolAsync(const void* symbol, const void* src,
                                   size_t sizeBytes, size_t offset,
                                   cudaMemcpyKind copyType,
-                                  cudaStream_t stream = 0)
+                                  cudaStream_t stream)
 {
   char* base_ptr = static_cast<char*>(const_cast<void*>(symbol));
   void* ptr = static_cast<void*>(base_ptr + offset);
@@ -280,7 +289,7 @@ cudaError_t cudaMemcpyToSymbolAsync(const void* symbol, const void* src,
 cudaError_t cudaMemcpyFromSymbolAsync(void* dst, const void* symbolName,
                                     size_t sizeBytes, size_t offset,
                                     cudaMemcpyKind kind,
-                                    cudaStream_t stream = 0)
+                                    cudaStream_t stream)
 {
   const void* ptr = 
     static_cast<const void*>(static_cast<const char*>(symbolName)+offset);
@@ -289,8 +298,8 @@ cudaError_t cudaMemcpyFromSymbolAsync(void* dst, const void* symbolName,
 
 
 cudaError_t cudaMemcpyToSymbol(const void* symbol, const void* src, size_t sizeBytes,
-                            size_t offset = 0,
-                            cudaMemcpyKind copyType = cudaMemcpyHostToDevice)
+                            size_t offset,
+                            cudaMemcpyKind copyType)
 {
   cudaError_t err = 
     cudaMemcpyToSymbolAsync(symbol, src, sizeBytes, offset, copyType, 0);
@@ -304,8 +313,8 @@ cudaError_t cudaMemcpyToSymbol(const void* symbol, const void* src, size_t sizeB
 
 
 cudaError_t cudaMemcpyFromSymbol(void *dst, const void *symbolName,
-                               size_t sizeBytes, size_t offset = 0,
-                               cudaMemcpyKind kind = cudaMemcpyDeviceToHost) 
+                               size_t sizeBytes, size_t offset,
+                               cudaMemcpyKind kind) 
 {
   cudaError_t err = 
     cudaMemcpyFromSymbolAsync(dst, symbolName, sizeBytes, offset, kind, 0);
@@ -325,18 +334,18 @@ cudaError_t cudaMemcpy2DAsync(void* dst, size_t dpitch, const void* src, size_t 
                                           size_t width, size_t height, cudaMemcpyKind kind,
                                           cudaStream_t stream)
 {
-  if(!_cpucuda_runtime.streams().is_valid(stream))
+	if(!_cpucuda_runtime.streams().is_valid(reinterpret_cast<uintptr_t>(stream)))
     return cudaErrorInvalidValue;
 
   _cpucuda_runtime.submit_operation([=](){
-    for(size_t row = 0; row < height; ++row)
+    for(size_t row; row < height; ++row)
     {
       void* row_dst_begin = reinterpret_cast<char*>(dst) + row * dpitch;
       const void* row_src_begin = reinterpret_cast<const char*>(src) + row * spitch;
 
       memcpy(row_dst_begin, row_src_begin, width);
     }
-  }, stream);
+  }, reinterpret_cast<uintptr_t>(stream));
   
   return cudaSuccess;
 }
@@ -379,11 +388,15 @@ cudaError_t cudaDeviceSynchronize()
   return cudaSuccess;
 }
 
-cudaError_t cudaDeviceGetCacheConfig(cudaFuncCache_t* pCacheConfig);
+const char* cudaGetErrorString(cudaError_t error)
+{
+	return "cudaGetErrorString not yet implemented...";
+}
 
-const char* cudaGetErrorString(cudaError_t error);
-
-const char* cudaGetErrorName(cudaError_t error);
+const char* cudaGetErrorName(cudaError_t error)
+{
+	return "cudaGetErrorName not yet implemented...";
+}
 
 
 cudaError_t cudaGetDeviceCount(int* count)
@@ -413,14 +426,14 @@ cudaError_t cudaIpcOpenMemHandle(void** devPtr, cudaIpcMemHandle_t handle,
 */
 
 cudaError_t cudaMemsetAsync(void* devPtr, int value, size_t count,
-                                        cudaStream_t stream = 0)
+                                        cudaStream_t stream)
 {
-  if(!_cpucuda_runtime.streams().is_valid(stream))
+	if(!_cpucuda_runtime.streams().is_valid(reinterpret_cast<uintptr_t>(stream)))
     return cudaErrorInvalidValue;
   
   _cpucuda_runtime.submit_operation([=](){
     memset(devPtr, value, count);
-  }, stream);
+  }, reinterpret_cast<uintptr_t>(stream));
 
   return cudaSuccess;
 }
@@ -436,24 +449,7 @@ cudaError_t cudaMemset(void* devPtr, int value, size_t count)
   return cudaSuccess;
 }
 
-
-cudaError_t cudaMemsetD8(cudaDeviceptr_t dest, unsigned char value, size_t sizeBytes)
-{
-  return cudaMemset(dest, value, sizeBytes);
-}
-
-/*
-cudaError_t cudaMemset2D(void* dst, size_t pitch, int value, size_t width, size_t height);
-
-cudaError_t cudaMemset2DAsync(void* dst, size_t pitch, int value, size_t width, size_t height, cudaStream_t stream = 0);
-
-cudaError_t cudaMemset3D(cudaPitchedPtr pitchedDevPtr, int  value, cudaExtent extent );
-
-cudaError_t cudaMemset3DAsync(cudaPitchedPtr pitchedDevPtr, int  value, cudaExtent extent, cudaStream_t stream = 0);
-*/
-
-
-cudaError_t cudaGetDeviceProperties(cudaDeviceProp_t* p_prop, int device)
+cudaError_t cudaGetDeviceProperties(cudaDeviceProp* p_prop, int device)
 {
   if(device != 0)
     return cudaErrorInvalidDevice;
@@ -461,7 +457,7 @@ cudaError_t cudaGetDeviceProperties(cudaDeviceProp_t* p_prop, int device)
   static const char device_name[] = "cpucuda OpenMP host device";
   int max_dim = std::numeric_limits<int>::max();
 
-  static_assert(sizeof device_name <= sizeof p_prop->name);
+  static_assert(sizeof device_name <= sizeof p_prop->name, "");
   memcpy(p_prop->name, device_name, sizeof device_name);
 
   // TODO: Find available memory
@@ -488,78 +484,105 @@ cudaError_t cudaGetDeviceProperties(cudaDeviceProp_t* p_prop, int device)
   p_prop->l2CacheSize = std::numeric_limits<int>::max();
   p_prop->maxThreadsPerMultiProcessor = p_prop->maxThreadsPerBlock;
   p_prop->computeMode = 0;
-  p_prop->clockInstructionRate = p_prop->clockRate;
 
-  cudaDeviceArch_t arch;
-  arch.hasGlobalInt32Atomics = 1;
-  arch.hasGlobalFloatAtomicExch = 1;
-  arch.hasSharedInt32Atomics = 1;
-  arch.hasSharedFloatAtomicExch = 1;
-  arch.hasFloatAtomicAdd = 1;
-  arch.hasGlobalInt64Atomics = 1;
-  arch.hasSharedInt64Atomics = 1;
-  arch.hasDoubles = 1;
-  arch.hasWarpVote = 0;
-  arch.hasWarpBallot = 0;
-  arch.hasWarpShuffle = 0;
-  arch.hasFunnelShift = 0;
-  arch.hasThreadFenceSystem = 1;
-  arch.hasSyncThreadsExt = 1;
-  arch.hasSurfaceFuncs = 0;
-  arch.has3dGrid = 1;
-  arch.hasDynamicParallelism = 0;
-
-  p_prop->arch = arch;
   p_prop->concurrentKernels = 1;
   p_prop->pciBusID = 0;
   p_prop->pciDeviceID = 0;
-  p_prop->maxSharedMemoryPerMultiProcessor = p_prop->sharedMemPerBlock;
+  p_prop->sharedMemPerMultiprocessor = p_prop->sharedMemPerBlock;
   p_prop->isMultiGpuBoard = 0;
   p_prop->canMapHostMemory = 1;
-  p_prop->gcnArch = 0;
-  
+
   return cudaSuccess;
 }
 
-cudaError_t cudaDeviceGetAttribute(int* pi, cudaDeviceAttribute_t attr, int device);
+cudaError_t cudaDeviceGetAttribute(int* value, cudaDeviceAttr attr, int device)
+{
+  switch (attr) {
+  case cudaDevAttrMaxBlockDimX: //2:
+    *value = 1024; break;
+  case cudaDevAttrMaxBlockDimY: //3:
+    *value = 1024; break;
+  case cudaDevAttrMaxBlockDimZ: //4:
+    *value = 64; break;
+  case cudaDevAttrMaxGridDimX: //5:
+    *value = 2147483647; break;
+  case cudaDevAttrMaxGridDimY: //6:
+    *value = 65535; break;
+  case cudaDevAttrMaxGridDimZ: //7:
+    *value = 65535; break;
+  case cudaDevAttrMaxSharedMemoryPerBlock: //8:
+    *value = 49152; break;
+  case cudaDevAttrWarpSize: //10:
+    *value = 32; break;
+  case cudaDevAttrMaxRegistersPerBlock: //12:
+    *value = 65536; break;
+  case cudaDevAttrTextureAlignment: //14:
+    *value = 512; break;
+  case cudaDevAttrMultiProcessorCount: //16:
+    *value = 28; break;
+  case cudaDevAttrPciDeviceId: //34:
+    *value = 0; break;
+  case cudaDevAttrTccDriver: //35:
+    *value = 0; break;
+  case cudaDevAttrMaxThreadsPerMultiProcessor: //39:
+    *value = 2048; break;
+  case cudaDevAttrComputeCapabilityMajor: //75:
+    *value = 6; break;
+  case cudaDevAttrComputeCapabilityMinor: //76:
+    *value = 1; break;
+  case cudaDevAttrMaxSharedMemoryPerMultiprocessor: //81:
+    *value = 98304; break;
+  case cudaDevAttrCooperativeLaunch: //95:
+    *value = 1; break;
+    // TODO look properly at below attrs
+  case cudaDevAttrComputeMode: // 20:
+    *value = 0; break; // cudaComputeModeDefault
+  case cudaDevAttrClockRate: // 13:
+    *value = 100; break;
+  default:
+    fprintf(stderr, "unknown attr %d", attr);
+    return cudaErrorApiFailureBase;
+  }
+  return cudaSuccess;
+}
 
 cudaError_t cudaOccupancyMaxActiveBlocksPerMultiprocessor(int* numBlocks,
                                                         const void* func,
                                                         int blockSize,
                                                         size_t dynamicSMemSize);
 
-cudaError_t cudaPointerGetAttributes(cudaPointerAttribute_t* attributes, void* ptr);
+//cudaError_t cudaPointerGetAttributes(cudaPointerAttribute_t* attributes, void* ptr);
 
 cudaError_t cudaMemGetInfo(size_t* free, size_t* total);
 
 
 cudaError_t cudaEventCreate(cudaEvent_t* event)
 {
-  *event = _cpucuda_runtime.create_event();
+	*event = reinterpret_cast<cudaEvent_t>(_cpucuda_runtime.create_event());
   return cudaSuccess;
 }
 
 
-cudaError_t cudaEventRecord(cudaEvent_t event, cudaStream_t stream = 0)
+cudaError_t cudaEventRecord(cudaEvent_t event, cudaStream_t stream)
 {
-  if(!_cpucuda_runtime.events().is_valid(event) ||
-     !_cpucuda_runtime.streams().is_valid(stream))
+  if(!_cpucuda_runtime.events().is_valid(reinterpret_cast<uintptr_t>(event)) ||
+     !_cpucuda_runtime.streams().is_valid(reinterpret_cast<uintptr_t>(stream)))
     return cudaErrorInvalidValue;
 
-  std::shared_ptr<cpucuda::event> evt = _cpucuda_runtime.events().get_shared(event);
+  std::shared_ptr<cpucuda::event> evt = _cpucuda_runtime.events().get_shared(reinterpret_cast<uintptr_t>(event));
   _cpucuda_runtime.submit_operation([evt](){
     evt->mark_as_finished();
-  }, stream);
+  }, reinterpret_cast<uintptr_t>(stream));
   return cudaSuccess;
 }
 
 
 cudaError_t cudaEventSynchronize(cudaEvent_t event)
 {
-  if(!_cpucuda_runtime.events().is_valid(event))
+  if(!_cpucuda_runtime.events().is_valid(reinterpret_cast<uintptr_t>(event)))
     return cudaErrorInvalidValue;
 
-  cpucuda::event* evt = _cpucuda_runtime.events().get(event);
+  cpucuda::event* evt = _cpucuda_runtime.events().get(reinterpret_cast<uintptr_t>(event));
   evt->wait();
 
   if(evt->is_complete())
@@ -571,11 +594,11 @@ cudaError_t cudaEventSynchronize(cudaEvent_t event)
 
 cudaError_t cudaEventElapsedTime(float* ms, cudaEvent_t start, cudaEvent_t stop)
 {
-  if(!_cpucuda_runtime.events().is_valid(start) || !_cpucuda_runtime.events().is_valid(stop))
+	if(!_cpucuda_runtime.events().is_valid(reinterpret_cast<uintptr_t>(start)) || !_cpucuda_runtime.events().is_valid(reinterpret_cast<uintptr_t>(stop)))
     return cudaErrorInvalidValue;
 
-  cpucuda::event* start_evt = _cpucuda_runtime.events().get(start);
-  cpucuda::event* stop_evt = _cpucuda_runtime.events().get(stop);
+	cpucuda::event* start_evt = _cpucuda_runtime.events().get(reinterpret_cast<uintptr_t>(start));
+	cpucuda::event* stop_evt = _cpucuda_runtime.events().get(reinterpret_cast<uintptr_t>(stop));
   if(start_evt->is_complete() && stop_evt->is_complete())
   {
     *ms = static_cast<float>(stop_evt->timestamp_ns() - start_evt->timestamp_ns()) / 1e6f;
@@ -588,10 +611,10 @@ cudaError_t cudaEventElapsedTime(float* ms, cudaEvent_t start, cudaEvent_t stop)
 
 cudaError_t cudaEventDestroy(cudaEvent_t event)
 {
-  if(!_cpucuda_runtime.events().is_valid(event))
+  if(!_cpucuda_runtime.events().is_valid(reinterpret_cast<uintptr_t>(event)))
     return cudaErrorInvalidValue;
 
-  _cpucuda_runtime.destroy_event(event);
+  _cpucuda_runtime.destroy_event(reinterpret_cast<uintptr_t>(event));
   return cudaSuccess;
 }
 
@@ -604,6 +627,7 @@ cudaError_t cudaRuntimeGetVersion(int* runtimeVersion)
   return cudaSuccess;
 }
 
+/*
 cudaError_t cudaDeviceCanAccessPeer(int* canAccessPeer, int device, int peerDevice);
 
 cudaError_t cudaDeviceDisablePeerAccess(int peerDevice);
@@ -632,7 +656,7 @@ cudaError_t cudaMemcpyPeer(void* dst, int dstDevice, const void* src, int srcDev
 
 cudaError_t cudaMemcpyPeerAsync(void* dst, int dstDevice, const void* src,
                                             int srcDevice, size_t count,
-                                            cudaStream_t stream = 0);
+                                            cudaStream_t stream);
 
 // Profile APIs:
 cudaError_t cudaProfilerStart();
@@ -642,13 +666,14 @@ cudaError_t cudaSetDeviceFlags(unsigned int flags);
 
 cudaError_t cudaEventCreateWithFlags(cudaEvent_t* event, unsigned int flags);
 
+*/
 
 cudaError_t cudaEventQuery(cudaEvent_t event)
 {
-  if(!_cpucuda_runtime.events().is_valid(event))
+	if(!_cpucuda_runtime.events().is_valid(reinterpret_cast<uintptr_t>(event)))
     return cudaErrorInvalidValue;
 
-  bool is_ready = _cpucuda_runtime.events().get(event)->is_complete();
+	bool is_ready = _cpucuda_runtime.events().get(reinterpret_cast<uintptr_t>(event))->is_complete();
 
   if(!is_ready)
     return cudaErrorNotReady;
@@ -735,9 +760,9 @@ cudaError_t cudaFuncSetCacheConfig(const void* func, cudaFuncCache_t cacheConfig
 
 template <class T>
 cudaError_t cudaOccupancyMaxPotentialBlockSize(int* minGridSize, int* blockSize, T func,
-                                                           size_t dynamicSMemSize = 0,
-                                                           int blockSizeLimit = 0,
-                                                           unsigned int flags = 0);
+                                                           size_t dynamicSMemSize,
+                                                           int blockSizeLimit,
+                                                           unsigned int flags);
 
 /*
 template <class T, int dim, enum cudaTextureReadMode readMode>
@@ -794,6 +819,7 @@ cudaError_t cudaGetTextureAlignmentOffset(size_t* offset, const textureReference
 cudaError_t cudaGetChannelDesc(cudaChannelFormatDesc* desc, cudaArray_const_t array);
 */
 
+/*
 
 __device__
 
@@ -1200,6 +1226,6 @@ double __fma_rz(double x, double y, double z)
 {
   return std::fma(x,y,z);
 }
-
+*/
 
 #endif // CPUCUDA_RUNTIME_H

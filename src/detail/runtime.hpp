@@ -33,15 +33,19 @@
 #include <memory>
 #include <unordered_map>
 #include <stdexcept>
+#include <cstdint>
 
 #include "queue.hpp"
-#include "types.hpp"
-#include "kernel_execution_context.hpp"
 #include "event.hpp"
+
+#ifndef CPUCUDA_NO_OPENMP
+#include <omp.h>
+#endif
 
 namespace cpucuda {
 namespace detail {
 
+using std::uintptr_t;
 
 template<class Object>
 class object_storage
@@ -55,27 +59,28 @@ public:
 
   struct item
   {
-    std::size_t id;
+    std::uintptr_t id;
     object_ptr data;
   };
 
-  int store(object_ptr obj)
+  uintptr_t store(object_ptr obj)
   {
     std::lock_guard<std::mutex> lock{_lock};
 
-    for(std::size_t i = 0; i < _data.size(); ++i)
+    for(std::uintptr_t i = 0; i < _data.size(); ++i)
       if(!_data[i])
       {
         _data[i] = std::move(obj);
-        return static_cast<int>(i);
+        return i;
       }
     
     _data.push_back(obj);
     assert(_data.size() > 0);
-    return static_cast<int>(_data.size()-1);
+
+    return _data.size()-1;
   }
 
-  Object* get(int id) const
+  Object* get(uintptr_t id) const
   {
     std::lock_guard<std::mutex> lock{_lock};
 
@@ -83,7 +88,7 @@ public:
     return _data[id].get();
   }
   
-  object_ptr get_shared(int id) const
+  object_ptr get_shared(uintptr_t id) const
   {
     std::lock_guard<std::mutex> lock{_lock};
     
@@ -92,7 +97,7 @@ public:
     return _data[id];
   }
 
-  void destroy(int id)
+  void destroy(uintptr_t id)
   {
     std::lock_guard<std::mutex> lock{_lock};
 
@@ -112,9 +117,9 @@ public:
     }
   }
 
-  bool is_valid(int id) const
+  bool is_valid(uintptr_t id) const
   {
-    if(id < 0 || static_cast<unsigned int>(id) >= _data.size())
+    if(id < 0 || id >= _data.size())
       return false;
     if(_data[id] == nullptr)
       return false;
@@ -181,63 +186,32 @@ private:
   std::unique_ptr<detail::async_queue> _queue;
 };
 
+typedef void (*__cpucuda_call_kernel_type)(dim3, dim3, dim3, void**, size_t);
+
 class device
 {
 public:
-  template<class Func>
-  void submit_kernel(stream& execution_stream, 
-                    dim3 grid, dim3 block, int shared_mem, Func f)
+	void submit_kernel(stream& execution_stream,
+	                   dim3 grid_dim, dim3 block_dim,
+	                   int shared_mem, const void *func, void **args)
   {
-#ifdef CPUCUDA_NO_OPENMP
-    if(block.x * block.y * block.z > 1)
-      throw std::invalid_argument{"More than 1 thread per block requires compiling"
-                                  " hipCPU with OpenMP support."};
-#endif
-
     execution_stream([=](){
       std::lock_guard<std::mutex> lock{this->_kernel_execution_mutex};
-      _block_context = detail::kernel_block_context{block, shared_mem};
-      _grid_context = detail::kernel_grid_context{grid};
-
 #ifndef CPUCUDA_NO_OPENMP
-  #pragma omp parallel for num_threads(block.x*block.y*block.z) collapse(3)
+#pragma omp parallel for collapse(3) schedule(static)
 #endif
-      for(size_t l_x = 0; l_x < block.x; ++l_x){
-        for(size_t l_y = 0; l_y < block.y; ++l_y){
-          for(size_t l_z = 0; l_z < block.z; ++l_z){
-
-            for(size_t g_x = 0; g_x < grid.x; ++g_x){
-              for(size_t g_y = 0; g_y < grid.y; ++g_y){
-                for(size_t g_z = 0; g_z < grid.z; ++g_z){
-                  _grid_context.set_block_id(dim3{g_x, g_y, g_z});
-                  f();
-                  // TODO: Can this barrier be removed if
-                  // we have two shared memory allocations
-                  // per block context? What about static
-                  // allocations?
-                  barrier();
-                }
-              }
-            }
-            
-
+      for(unsigned g_z = 0; g_z < grid_dim.z; ++g_z) {
+        //printf("g_z %u < %u\n", g_z, grid_dim.z);
+        for(unsigned g_y = 0; g_y < grid_dim.y; ++g_y) {
+          //printf("g_y %u < %u\n", g_y, grid_dim.y);
+          for(unsigned g_x = 0; g_x < grid_dim.x; ++g_x) {
+            dim3 block_idx = {g_x, g_y, g_z};
+            //printf("block_idx %u\n", g_x + grid_dim.x * (g_y + grid_dim.y * g_z));
+            ((__cpucuda_call_kernel_type) func)(grid_dim, block_idx, block_dim, args, shared_mem);
           }
         }
       }
-    });
-  }
-
-
-  template<class Func>
-  void submit_kernel(stream& execution_stream, 
-                    int shared_mem, Func f)
-  {
-    execution_stream([=]{
-      std::lock_guard<std::mutex> lock{this->_kernel_execution_mutex};
-      _block_context = detail::kernel_block_context{dim3{1,1,1}, shared_mem};
-      _grid_context = detail::kernel_grid_context{dim3{1,1,1}};
-      _grid_context.set_block_id(dim3{0, 0, 0});
-      f();
+      free(args);
     });
   }
 
@@ -252,16 +226,6 @@ public:
 #ifndef CPUCUDA_NO_OPENMP
     #pragma omp barrier
 #endif
-  }
-
-  const detail::kernel_block_context& get_block() const
-  {
-    return _block_context;
-  }
-
-  const detail::kernel_grid_context& get_grid() const
-  {
-    return _grid_context;
   }
 
   int get_max_threads()
@@ -285,15 +249,7 @@ public:
   std::size_t get_max_shared_memory() const
   { return std::numeric_limits<std::size_t>::max(); }
 
-  void* get_dynamic_shared_memory() const
-  {
-    return _block_context.get_dynamic_shared_mem();
-  }
-
 private:
-  detail::kernel_block_context _block_context;
-  detail::kernel_grid_context _grid_context;
-
   std::mutex _kernel_execution_mutex;
 };
 
@@ -319,28 +275,28 @@ public:
     return r;
   }
 
-  int create_async_stream()
+  uintptr_t create_async_stream()
   {
     return _streams.store(std::make_unique<stream>());
   }
 
-  int create_blocking_stream()
+  uintptr_t create_blocking_stream()
   {
     return _streams.store(std::make_unique<stream>(_streams.get(0)));
   }
 
-  void destroy_stream(int stream_id)
+  void destroy_stream(uintptr_t stream_id)
   {
     assert(stream_id != 0);
     _streams.destroy(stream_id);
   }
 
-  int create_event()
+  uintptr_t create_event()
   {
     return _events.store(std::make_unique<event>());
   }
   
-  void destroy_event(int event_id)
+  void destroy_event(uintptr_t event_id)
   {
     _events.destroy(event_id);
   }
@@ -379,7 +335,7 @@ public:
 
 
   template<class Func>
-  void submit_operation(Func f, int stream_id = 0)
+  void submit_operation(Func f, uintptr_t stream_id = 0)
   {
     auto s = this->_streams.get(stream_id);
     this->dev().submit_operation(*s, f);
@@ -399,6 +355,13 @@ public:
     auto s = this->_streams.get(stream);
     this->dev().submit_kernel(*s, scratch_mem, f);
   }
+
+	void submit_kernel(const void *func, dim3 grid, dim3 block, void **args,
+	                   size_t shared_mem, cudaStream_t stream)
+	{
+		auto s = this->_streams.get((size_t) stream);
+		this->dev().submit_kernel(*s, grid, block, shared_mem, func, args);
+	}
 
 private:
   mutable std::mutex _runtime_lock;
