@@ -79,7 +79,8 @@ cudaError_t __cpucudaLaunchKernel(
 	size_t shared_mem,
 	cudaStream_t stream)
 {
-	_cpucuda_runtime.submit_kernel(func, grid_dim, block_dim, args, shared_mem, stream);
+	_cpucuda_runtime.submit_kernel(func, grid_dim, block_dim, args, shared_mem,
+	                               reinterpret_cast<uintptr_t>(stream));
 	return cudaSuccess;
 }
 

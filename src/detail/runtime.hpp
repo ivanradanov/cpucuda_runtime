@@ -357,10 +357,14 @@ public:
   }
 
 	void submit_kernel(const void *func, dim3 grid, dim3 block, void **args,
-	                   size_t shared_mem, cudaStream_t stream)
+	                   size_t shared_mem, uintptr_t stream)
 	{
-		auto s = this->_streams.get((size_t) stream);
+		auto s = this->_streams.get(stream);
 		this->dev().submit_kernel(*s, grid, block, shared_mem, func, args);
+		// If we are on the master stream, wait for execution to end TODO check how
+		// this is achieve in the original hipCPU
+		if (stream == 0)
+			s->wait();
 	}
 
 private:
