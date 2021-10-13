@@ -52,55 +52,84 @@ using std::uintptr_t;
 
 // TODO this would have to be thread local
 struct {
-	dim3 gridDim, blockDim;
-	size_t sharedMem;
-	void *stream;
-	bool used;
+  dim3 gridDim, blockDim;
+  size_t sharedMem;
+  void *stream;
+  bool used;
 } __cpucudaCallConfiguration;
 
 /*extern "C"*/ unsigned __cudaPushCallConfiguration(dim3 gridDim, dim3 blockDim,
                                                     size_t sharedMem,
                                                     void *stream) {
-	//assert(__cpucudaCallConfiguration.used);
-	__cpucudaCallConfiguration.gridDim = gridDim;
-	__cpucudaCallConfiguration.blockDim = blockDim;
-	__cpucudaCallConfiguration.sharedMem = sharedMem;
-	__cpucudaCallConfiguration.stream = stream;
-	__cpucudaCallConfiguration.used = false;
+  //assert(__cpucudaCallConfiguration.used);
+  __cpucudaCallConfiguration.gridDim = gridDim;
+  __cpucudaCallConfiguration.blockDim = blockDim;
+  __cpucudaCallConfiguration.sharedMem = sharedMem;
+  __cpucudaCallConfiguration.stream = stream;
+  __cpucudaCallConfiguration.used = false;
 
-	return 0;
+  return 0;
+}
+
+cudaError_t __cpucudaLaunchKernelSelfContained(
+  const void* func,
+  dim3 grid_dim,
+  dim3 block_dim,
+  void** args,
+  size_t shared_mem,
+  cudaStream_t stream)
+{
+  _cpucuda_runtime.submit_kernel_self_contained(func, grid_dim, block_dim, args, shared_mem,
+                                                reinterpret_cast<uintptr_t>(stream));
+  return cudaSuccess;
 }
 
 cudaError_t __cpucudaLaunchKernel(
-	const void* func,
-	dim3 grid_dim,
-	dim3 block_dim,
-	void** args,
-	size_t shared_mem,
-	cudaStream_t stream)
+  const void* func,
+  dim3 grid_dim,
+  dim3 block_dim,
+  void** args,
+  size_t shared_mem,
+  cudaStream_t stream)
 {
-	_cpucuda_runtime.submit_kernel(func, grid_dim, block_dim, args, shared_mem,
-	                               reinterpret_cast<uintptr_t>(stream));
-	return cudaSuccess;
+  _cpucuda_runtime.submit_kernel(func, grid_dim, block_dim, args, shared_mem,
+                                 reinterpret_cast<uintptr_t>(stream));
+  return cudaSuccess;
 }
 
-extern "C" cudaError_t __cpucudaLaunchKernelWithPushedConfiguration(
-	const void* func,
-	void** args)
+extern "C"
+cudaError_t __cpucudaLaunchKernelSelfContainedWithPushedConfiguration(
+  const void* func,
+  void** args)
 {
-	assert(__cpucudaCallConfiguration.used == false);
-	dim3 grid_dim = __cpucudaCallConfiguration.gridDim;
-	dim3 block_dim = __cpucudaCallConfiguration.blockDim;
-	size_t shared_mem = __cpucudaCallConfiguration.sharedMem;
-	cudaStream_t stream = (cudaStream_t) __cpucudaCallConfiguration.stream;
-	__cpucudaCallConfiguration.used = true;
+  assert(__cpucudaCallConfiguration.used == false);
+  dim3 grid_dim = __cpucudaCallConfiguration.gridDim;
+  dim3 block_dim = __cpucudaCallConfiguration.blockDim;
+  size_t shared_mem = __cpucudaCallConfiguration.sharedMem;
+  cudaStream_t stream = (cudaStream_t) __cpucudaCallConfiguration.stream;
+  __cpucudaCallConfiguration.used = true;
 
-	return __cpucudaLaunchKernel(func, grid_dim, block_dim, args, shared_mem, stream);
+  return __cpucudaLaunchKernelSelfContained(func, grid_dim, block_dim, args, shared_mem, stream);
+}
+
+extern "C"
+cudaError_t __cpucudaLaunchKernelWithPushedConfiguration(
+  const void* func,
+  void** args)
+{
+  assert(__cpucudaCallConfiguration.used == false);
+  dim3 grid_dim = __cpucudaCallConfiguration.gridDim;
+  dim3 block_dim = __cpucudaCallConfiguration.blockDim;
+  size_t shared_mem = __cpucudaCallConfiguration.sharedMem;
+  cudaStream_t stream = (cudaStream_t) __cpucudaCallConfiguration.stream;
+  __cpucudaCallConfiguration.used = true;
+
+  return __cpucudaLaunchKernel(func, grid_dim, block_dim, args, shared_mem, stream);
 }
 
 cudaError_t cudaGetLastError(void)
 {
-	return cudaSuccess;
+  return cudaSuccess;
 }
 
 cudaError_t cudaMalloc(void** ptr, size_t size)

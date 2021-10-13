@@ -187,15 +187,29 @@ private:
 };
 
 typedef void (*__cpucuda_call_kernel_type)(dim3, dim3, dim3, void**, size_t);
+typedef void (*__cpucuda_call_kernel_self_contained_type)(dim3, dim3, void**, size_t);
 
 class device
 {
 public:
-	void submit_kernel(stream& execution_stream,
-	                   dim3 grid_dim, dim3 block_dim,
-	                   int shared_mem, const void *func, void **args)
+  void submit_kernel_self_contained(stream& execution_stream,
+                                    dim3 grid_dim, dim3 block_dim,
+                                    int shared_mem, const void *func, void **args)
   {
     execution_stream([=](){
+      ((__cpucuda_call_kernel_self_contained_type) func)(grid_dim, block_dim, args, shared_mem);
+      free(args);
+    });
+  }
+
+  void submit_kernel(stream& execution_stream,
+                     dim3 grid_dim, dim3 block_dim,
+                     int shared_mem, const void *func, void **args)
+  {
+    execution_stream([=](){
+      // TODO Eventually we would like the number of threads used to be perhaps
+      // dynamic and be the number of free threads at the moment, thus removing
+      // the need for the mutex?
       std::lock_guard<std::mutex> lock{this->_kernel_execution_mutex};
 #ifndef CPUCUDA_NO_OPENMP
 #pragma omp parallel for collapse(3) schedule(static)
@@ -224,7 +238,7 @@ public:
   void barrier()
   {
 #ifndef CPUCUDA_NO_OPENMP
-    #pragma omp barrier
+#pragma omp barrier
 #endif
   }
 
@@ -257,7 +271,7 @@ private:
 class runtime
 {
   runtime()
-  : _current_device{0}
+    : _current_device{0}
   {
     _devices.push_back(std::make_unique<device>());
     // Create default stream
@@ -343,7 +357,7 @@ public:
 
   template<class Func>
   void submit_kernel(dim3 grid, dim3 block,
-                    int shared_mem, int stream, Func f)
+                     int shared_mem, int stream, Func f)
   {
     auto s = this->_streams.get(stream);
     this->dev().submit_kernel(*s, grid, block, shared_mem, f);
@@ -356,16 +370,27 @@ public:
     this->dev().submit_kernel(*s, scratch_mem, f);
   }
 
-	void submit_kernel(const void *func, dim3 grid, dim3 block, void **args,
-	                   size_t shared_mem, uintptr_t stream)
-	{
-		auto s = this->_streams.get(stream);
-		this->dev().submit_kernel(*s, grid, block, shared_mem, func, args);
-		// If we are on the master stream, wait for execution to end TODO check how
-		// this is achieve in the original hipCPU
-		if (stream == 0)
-			s->wait();
-	}
+  void submit_kernel(const void *func, dim3 grid, dim3 block, void **args,
+                     size_t shared_mem, uintptr_t stream)
+  {
+    auto s = this->_streams.get(stream);
+    this->dev().submit_kernel(*s, grid, block, shared_mem, func, args);
+    // If we are on the master stream, wait for execution to end TODO check how
+    // this is achieved in the original hipCPU
+    if (stream == 0)
+      s->wait();
+  }
+
+  void submit_kernel_self_contained(const void *func, dim3 grid, dim3 block, void **args,
+                                    size_t shared_mem, uintptr_t stream)
+  {
+    auto s = this->_streams.get(stream);
+    this->dev().submit_kernel_self_contained(*s, grid, block, shared_mem, func, args);
+    // If we are on the master stream, wait for execution to end TODO check how
+    // this is achieved in the original hipCPU
+    if (stream == 0)
+      s->wait();
+  }
 
 private:
   mutable std::mutex _runtime_lock;
