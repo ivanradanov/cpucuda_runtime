@@ -409,6 +409,10 @@ cudaError_t cudaMemcpyAtoH(void* dst, cudaArray* srcArray, size_t srcOffset,
 cudaError_t cudaMemcpyHtoA(cudaArray* dstArray, size_t dstOffset, const void* srcHost,
                                        size_t count);
 
+cudaError_t cudaThreadSynchronize()
+{
+	return cudaDeviceSynchronize();
+}
 
 cudaError_t cudaDeviceSynchronize()
 {
