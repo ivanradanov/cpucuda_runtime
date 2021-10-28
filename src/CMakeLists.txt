@@ -2,6 +2,7 @@ find_package(OpenMP REQUIRED)
 
 add_library (cpucudart
   cpucuda_runtime.cpp
+  cpucuda_libdevice.c
   )
 
 set_property(TARGET cpucudart PROPERTY CXX_STANDARD 14)
