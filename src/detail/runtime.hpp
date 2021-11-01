@@ -375,10 +375,6 @@ public:
   {
     auto s = this->_streams.get(stream);
     this->dev().submit_kernel(*s, grid, block, shared_mem, func, args);
-    // If we are on the master stream, wait for execution to end TODO check how
-    // this is achieved in the original hipCPU
-    if (stream == 0)
-      s->wait();
   }
 
   void submit_kernel_self_contained(const void *func, dim3 grid, dim3 block, void **args,
@@ -386,10 +382,6 @@ public:
   {
     auto s = this->_streams.get(stream);
     this->dev().submit_kernel_self_contained(*s, grid, block, shared_mem, func, args);
-    // If we are on the master stream, wait for execution to end TODO check how
-    // this is achieved in the original hipCPU
-    if (stream == 0)
-      s->wait();
   }
 
 private:
