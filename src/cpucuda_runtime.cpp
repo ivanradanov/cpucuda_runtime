@@ -787,10 +787,11 @@ cudaError_t cudaModuleLaunchKernel(cudaFunction_t f, unsigned int gridDimX,
                                                unsigned int blockDimZ, unsigned int sharedMemBytes,
                                                cudaStream_t stream, void** kernelParams,
                                                void** extra);
-
-
-cudaError_t cudaFuncSetCacheConfig(const void* func, cudaFuncCache_t cacheConfig);
 */
+
+cudaError_t cudaFuncSetCacheConfig(const void* func, enum cudaFuncCache  cacheConfig) {
+  return cudaSuccess;
+}
 
 template <class T>
 cudaError_t cudaOccupancyMaxPotentialBlockSize(int* minGridSize, int* blockSize, T func,
@@ -1261,5 +1262,13 @@ double __fma_rz(double x, double y, double z)
   return std::fma(x,y,z);
 }
 */
+
+cudaError_t cudaThreadExit(void) {
+	return cudaDeviceSynchronize();
+}
+
+cudaError_t cudaDeviceReset(void) {
+	return cudaDeviceSynchronize();
+}
 
 #endif // CPUCUDA_RUNTIME_H
