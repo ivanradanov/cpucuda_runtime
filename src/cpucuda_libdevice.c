@@ -110,12 +110,12 @@ extern "C" {
   __DEVICE__ float __nv_exp10f(float __a);
   __DEVICE__ double __nv_exp2(double __a);
   __DEVICE__ float __nv_exp2f(float __a);
-	__DEVICE__ double __nv_exp(double __a) { return exp(__a); }
-  __DEVICE__ float __nv_expf(float __a);
+  __DEVICE__ double __nv_exp(double __a) { return exp(__a); }
+  __DEVICE__ float __nv_expf(float __a) { return exp(__a); }
   __DEVICE__ double __nv_expm1(double __a);
   __DEVICE__ float __nv_expm1f(float __a);
   __DEVICE__ double __nv_fabs(double __a);
-	__DEVICE__ float __nv_fabsf(float __a) { return fabsf(__a); }
+  __DEVICE__ float __nv_fabsf(float __a) { return fabsf(__a); }
   __DEVICE__ float __nv_fadd_rd(float __a, float __b);
   __DEVICE__ float __nv_fadd_rn(float __a, float __b);
   __DEVICE__ float __nv_fadd_ru(float __a, float __b);
@@ -124,7 +124,7 @@ extern "C" {
   __DEVICE__ float __nv_fast_exp10f(float __a);
   __DEVICE__ float __nv_fast_expf(float __a);
   __DEVICE__ float __nv_fast_fdividef(float __a, float __b);
-  __DEVICE__ float __nv_fast_log10f(float __a);
+  __DEVICE__ float __nv_fast_log10f(float __a) { return log10f(__a); }
   __DEVICE__ float __nv_fast_log2f(float __a) { return log2f(__a); }
   __DEVICE__ float __nv_fast_logf(float __a);
   __DEVICE__ float __nv_fast_powf(float __a, float __b) { return powf(__a, __b); }
@@ -180,7 +180,7 @@ extern "C" {
   __DEVICE__ double __nv_fmin(double __a, double __b);
   __DEVICE__ float __nv_fminf(float __a, float __b);
   __DEVICE__ double __nv_fmod(double __a, double __b);
-  __DEVICE__ float __nv_fmodf(float __a, float __b);
+  __DEVICE__ float __nv_fmodf(float __a, float __b) { return fmod(__a, __b); }
   __DEVICE__ float __nv_fmul_rd(float __a, float __b);
   __DEVICE__ float __nv_fmul_rn(float __a, float __b);
   __DEVICE__ float __nv_fmul_ru(float __a, float __b);
@@ -215,9 +215,9 @@ extern "C" {
   __DEVICE__ float __nv_int_as_float(int __a);
   __DEVICE__ int __nv_isfinited(double __a);
   __DEVICE__ int __nv_isinfd(double __a);
-  __DEVICE__ int __nv_isinff(float __a);
-  __DEVICE__ int __nv_isnand(double __a);
-  __DEVICE__ int __nv_isnanf(float __a);
+  __DEVICE__ int __nv_isinff(float __a) { return isinff(__a); }
+  __DEVICE__ int __nv_isnand(double __a) { return isnan(__a); }
+  __DEVICE__ int __nv_isnanf(float __a) { return isnanf(__a); }
   __DEVICE__ double __nv_j0(double __a);
   __DEVICE__ float __nv_j0f(float __a);
   __DEVICE__ double __nv_j1(double __a);
@@ -244,7 +244,7 @@ extern "C" {
   __DEVICE__ long long __nv_llround(double __a);
   __DEVICE__ long long __nv_llroundf(float __a);
   __DEVICE__ double __nv_log10(double __a);
-  __DEVICE__ float __nv_log10f(float __a);
+  __DEVICE__ float __nv_log10f(float __a) { return log10f(__a); }
   __DEVICE__ double __nv_log1p(double __a);
   __DEVICE__ float __nv_log1pf(float __a);
   __DEVICE__ double __nv_log2(double __a);
@@ -252,17 +252,17 @@ extern "C" {
   __DEVICE__ double __nv_logb(double __a);
   __DEVICE__ float __nv_logbf(float __a);
   __DEVICE__ double __nv_log(double __a);
-  __DEVICE__ float __nv_logf(float __a);
+  __DEVICE__ float __nv_logf(float __a) { return logf(__a); }
   __DEVICE__ double __nv_longlong_as_double(long long __a);
   __DEVICE__ int __nv_max(int __a, int __b);
   __DEVICE__ int __nv_min(int __a, int __b);
   __DEVICE__ double __nv_modf(double __a, double *__b);
   __DEVICE__ float __nv_modff(float __a, float *__b);
-	__DEVICE__ int __nv_mul24(int __a, int __b) {
-		return
-			(__a & __CPUCUDA_LEAST_SIGNIFICANT_24) *
-			(__b & __CPUCUDA_LEAST_SIGNIFICANT_24);
-	}
+  __DEVICE__ int __nv_mul24(int __a, int __b) {
+    return
+      (__a & __CPUCUDA_LEAST_SIGNIFICANT_24) *
+      (__b & __CPUCUDA_LEAST_SIGNIFICANT_24);
+  }
   __DEVICE__ long long __nv_mul64hi(long long __a, long long __b);
   __DEVICE__ int __nv_mulhi(int __a, int __b);
   __DEVICE__ double __nv_nan(const signed char *__a);
@@ -284,9 +284,9 @@ extern "C" {
   __DEVICE__ int __nv_popc(int __a);
   __DEVICE__ int __nv_popcll(long long __a);
   __DEVICE__ double __nv_pow(double __a, double __b);
-  __DEVICE__ float __nv_powf(float __a, float __b);
-  __DEVICE__ double __nv_powi(double __a, int __b);
-  __DEVICE__ float __nv_powif(float __a, int __b);
+  __DEVICE__ float __nv_powf(float __a, float __b) { return pow(__a, __b); }
+  __DEVICE__ double __nv_powi(double __a, int __b) { return pow(__a, __b); }
+  __DEVICE__ float __nv_powif(float __a, int __b) { return pow(__a, __b); }
   __DEVICE__ double __nv_rcbrt(double __a);
   __DEVICE__ float __nv_rcbrtf(float __a);
   __DEVICE__ double __nv_rcp64h(double __a);
@@ -325,7 +325,7 @@ extern "C" {
   __DEVICE__ float __nv_sinhf(float __a);
   __DEVICE__ double __nv_sinpi(double __a);
   __DEVICE__ float __nv_sinpif(float __a);
-	__DEVICE__ double __nv_sqrt(double __a) { return sqrt(__a); }
+  __DEVICE__ double __nv_sqrt(double __a) { return sqrt(__a); }
   __DEVICE__ float __nv_sqrtf(float __a) { return sqrtf(__a); }
   __DEVICE__ double __nv_tan(double __a);
   __DEVICE__ float __nv_tanf(float __a);

@@ -40,6 +40,9 @@
 #include <cmath>
 #include <stdexcept>
 #include <cstdint>
+#include <stdio.h>
+#include <sys/sysinfo.h>
+#include <unistd.h>
 
 #include <cuda_runtime.h>
 
@@ -587,7 +590,11 @@ cudaError_t cudaOccupancyMaxActiveBlocksPerMultiprocessor(int* numBlocks,
 
 //cudaError_t cudaPointerGetAttributes(cudaPointerAttribute_t* attributes, void* ptr);
 
-cudaError_t cudaMemGetInfo(size_t* free, size_t* total);
+cudaError_t cudaMemGetInfo(size_t* free, size_t* total) {
+  *total = sysconf(_SC_AVPHYS_PAGES) * sysconf(_SC_PAGESIZE);
+  *free = get_phys_pages() * sysconf(_SC_PAGESIZE);
+  return cudaSuccess;
+}
 
 
 cudaError_t cudaEventCreate(cudaEvent_t* event)
