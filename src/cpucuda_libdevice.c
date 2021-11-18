@@ -13,7 +13,7 @@ extern "C" {
 
 #define __DEVICE__
 
-  __DEVICE__ int __nv_abs(int __a);
+  __DEVICE__ int __nv_abs(int __a) { return abs(__a); }
   __DEVICE__ double __nv_acos(double __a);
   __DEVICE__ float __nv_acosf(float __a);
   __DEVICE__ double __nv_acosh(double __a);
@@ -33,13 +33,13 @@ extern "C" {
   __DEVICE__ int __nv_byte_perm(int __a, int __b, int __c);
   __DEVICE__ double __nv_cbrt(double __a);
   __DEVICE__ float __nv_cbrtf(float __a);
-  __DEVICE__ double __nv_ceil(double __a);
+  __DEVICE__ double __nv_ceil(double __a) { return ceil(__a); }
   __DEVICE__ float __nv_ceilf(float __a);
   __DEVICE__ int __nv_clz(int __a);
   __DEVICE__ int __nv_clzll(long long __a);
   __DEVICE__ double __nv_copysign(double __a, double __b);
   __DEVICE__ float __nv_copysignf(float __a, float __b);
-  __DEVICE__ double __nv_cos(double __a);
+  __DEVICE__ double __nv_cos(double __a) { return cos(__a); }
   __DEVICE__ float __nv_cosf(float __a);
   __DEVICE__ double __nv_cosh(double __a);
   __DEVICE__ float __nv_coshf(float __a);
@@ -114,7 +114,7 @@ extern "C" {
   __DEVICE__ float __nv_expf(float __a) { return exp(__a); }
   __DEVICE__ double __nv_expm1(double __a);
   __DEVICE__ float __nv_expm1f(float __a);
-  __DEVICE__ double __nv_fabs(double __a);
+  __DEVICE__ double __nv_fabs(double __a) { return fabs(__a); }
   __DEVICE__ float __nv_fabsf(float __a) { return fabsf(__a); }
   __DEVICE__ float __nv_fadd_rd(float __a, float __b);
   __DEVICE__ float __nv_fadd_rn(float __a, float __b);
@@ -251,7 +251,7 @@ extern "C" {
   __DEVICE__ float __nv_log2f(float __a);
   __DEVICE__ double __nv_logb(double __a);
   __DEVICE__ float __nv_logbf(float __a);
-  __DEVICE__ double __nv_log(double __a);
+  __DEVICE__ double __nv_log(double __a) { return log(__a); }
   __DEVICE__ float __nv_logf(float __a) { return logf(__a); }
   __DEVICE__ double __nv_longlong_as_double(long long __a);
   __DEVICE__ int __nv_max(int __a, int __b);
